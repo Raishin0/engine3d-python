@@ -3,7 +3,7 @@ import pygame as pg
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram,compileShader
 import numpy as np
-import ctypes
+import ctypes, pyrr
 
 class App:
     def __init__(self):
@@ -17,8 +17,20 @@ class App:
         glClearColor(0,0,0,1)
         
         glEnable(GL_BLEND)
+        glEnable(GL_DEPTH_TEST)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        self.triangle = Triangle()
+        self.cube = Cube([0,0,-2],[0,0,0])
+        self.cube_mesh = CubeMesh()
+        projection_transform = pyrr.matrix44.create_perspective_projection(
+            fovy = 45, aspect = 640/480, 
+            near = 0.1, far = 10, dtype=np.float32
+        )
+        glUniformMatrix4fv(
+            glGetUniformLocation(self.shader,"projection"),
+            1, GL_FALSE, projection_transform
+        )
+        self.modelMatrixLocation = glGetUniformLocation(self.shader,"model")
+        #self.triangle = Triangle()
         self.material = Material()
         self.mainloop()
 
@@ -28,12 +40,29 @@ class App:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     execute = False
-            glClear(GL_COLOR_BUFFER_BIT)
-
+            glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+            self.cube.eulers[2] +=2
+            if self.cube.eulers[2] > 360:
+                self.cube.eulers[2] = 0
             glUseProgram(self.shader)
+
+            model_transform = pyrr.matrix44.create_identity(dtype=np.float32)
+            model_transform = pyrr.matrix44.multiply(
+                m1=model_transform, 
+                m2=pyrr.matrix44.create_from_eulers(
+                    eulers=np.radians(self.cube.eulers), dtype=np.float32
+                )
+            )
+            model_transform = pyrr.matrix44.multiply(
+                m1=model_transform, 
+                m2=pyrr.matrix44.create_from_translation(
+                    vec=np.array(self.cube.position),dtype=np.float32
+                )
+            )
+            glUniformMatrix4fv(self.modelMatrixLocation,1,GL_FALSE,model_transform)
             self.material.use()
-            glBindVertexArray(self.triangle.vao)
-            glDrawArrays(GL_TRIANGLES,0,self.triangle.vertex_count)
+            glBindVertexArray(self.cube_mesh.vao)
+            glDrawArrays(GL_TRIANGLES,0,self.cube_mesh.vertex_count)
 
             pg.display.flip()
             self.clock.tick(60)
@@ -52,7 +81,7 @@ class App:
 
     def close(self):
         self.material.delete()
-        self.triangle.destroy()
+        self.cube_mesh.destroy()
         glDeleteProgram(self.shader)
         pg.quit()
 
@@ -79,6 +108,80 @@ class Triangle:
     def destroy(self):
         glDeleteVertexArrays(1,(self.vao,))
         glDeleteBuffers(1,(self.vbo,))
+
+class Cube:
+    def __init__(self,position, eulers):
+        self.position = np.array(position,np.float32)
+        self.eulers = np.array(eulers,np.float32)
+
+class CubeMesh:
+    def __init__(self):
+        self.vertices = (
+                -0.5, -0.5, -0.5,1,1,1, 0, 0,
+                 0.5, -0.5, -0.5,1,1,1, 1, 0,
+                 0.5,  0.5, -0.5,1,1,1, 1, 1,
+
+                 0.5,  0.5, -0.5,1,1,1, 1, 1,
+                -0.5,  0.5, -0.5,1,1,1, 0, 1,
+                -0.5, -0.5, -0.5,1,1,1, 0, 0,
+
+                -0.5, -0.5,  0.5,1,1,1, 0, 0,
+                 0.5, -0.5,  0.5,1,1,1, 1, 0,
+                 0.5,  0.5,  0.5,1,1,1, 1, 1,
+
+                 0.5,  0.5,  0.5,1,1,1, 1, 1,
+                -0.5,  0.5,  0.5,1,1,1, 0, 1,
+                -0.5, -0.5,  0.5,1,1,1, 0, 0,
+
+                -0.5,  0.5,  0.5,1,1,1, 1, 0,
+                -0.5,  0.5, -0.5,1,1,1, 1, 1,
+                -0.5, -0.5, -0.5,1,1,1, 0, 1,
+
+                -0.5, -0.5, -0.5,1,1,1, 0, 1,
+                -0.5, -0.5,  0.5,1,1,1, 0, 0,
+                -0.5,  0.5,  0.5,1,1,1, 1, 0,
+
+                 0.5,  0.5,  0.5,1,1,1, 1, 0,
+                 0.5,  0.5, -0.5,1,1,1, 1, 1,
+                 0.5, -0.5, -0.5,1,1,1, 0, 1,
+
+                 0.5, -0.5, -0.5,1,1,1, 0, 1,
+                 0.5, -0.5,  0.5,1,1,1, 0, 0,
+                 0.5,  0.5,  0.5,1,1,1, 1, 0,
+
+                -0.5, -0.5, -0.5,1,1,1, 0, 1,
+                 0.5, -0.5, -0.5,1,1,1, 1, 1,
+                 0.5, -0.5,  0.5,1,1,1, 1, 0,
+
+                 0.5, -0.5,  0.5,1,1,1, 1, 0,
+                -0.5, -0.5,  0.5,1,1,1, 0, 0,
+                -0.5, -0.5, -0.5,1,1,1, 0, 1,
+
+                -0.5,  0.5, -0.5,1,1,1, 0, 1,
+                 0.5,  0.5, -0.5,1,1,1, 1, 1,
+                 0.5,  0.5,  0.5,1,1,1, 1, 0,
+
+                 0.5,  0.5,  0.5,1,1,1, 1, 0,
+                -0.5,  0.5,  0.5,1,1,1, 0, 0,
+                -0.5,  0.5, -0.5,1,1,1, 0, 1
+        )
+        self.vertices = np.array(self.vertices,np.float32)
+        self.vertex_count = len(self.vertices)//8
+        self.vao = glGenVertexArrays(1)
+        glBindVertexArray(self.vao)
+        self.vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER,self.vbo)
+        glBufferData(GL_ARRAY_BUFFER,self.vertices.nbytes,self.vertices,GL_STATIC_DRAW)
+        glEnableVertexAttribArray(0)
+        glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,32,ctypes.c_void_p(0))
+        glEnableVertexAttribArray(1)
+        glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,32,ctypes.c_void_p(12))
+        glEnableVertexAttribArray(2)
+        glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,32,ctypes.c_void_p(24))
+    def destroy(self):
+        glDeleteVertexArrays(1,(self.vao,))
+        glDeleteBuffers(1,(self.vbo,))
+
 
 class Material:
     def __init__(self):
