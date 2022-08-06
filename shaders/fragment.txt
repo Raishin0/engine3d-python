@@ -1,7 +1,7 @@
 #version 330 core
 
 in vec3 fragmentColor;
-in vec2 fragmentTextureCord;
+in vec2 fragmentTextureCoord;
 
 out vec4 color;
 
@@ -9,5 +9,5 @@ uniform sampler2D imageTexture;
 
 void main()
 {
-    color = vec4(fragmentColor,1.0) * texture(imageTexture,fragmentTextureCord);
+    color = vec4(fragmentColor,1.0) * texture(imageTexture,fragmentTextureCoord);
 }
