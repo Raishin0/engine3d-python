@@ -4,9 +4,34 @@ from OpenGL.GL.shaders import compileProgram,compileShader
 import numpy as np
 import ctypes, pyrr
 
+class Scene:
+    def __init__(self):
+        self.player = Player((0,0,0))
+        self.objects = [
+            (Cube([6,0,0],[0,0,0]), Mesh("models\Crate1.obj"))
+        ]
+
+class Player:
+    def __init__(self,position):
+        self.position = np.array(position, dtype = np.float32)
+        self.theta = 0 #side angle
+        self.phi = 0 #up angle
+        self.update_vectors()
+    def update_vectors(self):
+        self.forward = np.array(
+            (
+                np.cos(np.deg2rad(self.theta)) * np.cos(np.deg2rad(self.phi)),
+                np.sin(np.deg2rad(self.theta)) * np.cos(np.deg2rad(self.phi)),
+                np.sin(np.deg2rad(self.phi))
+            ), np.float32
+        )
+        self.right = np.cross( np.array([0,0,1], dtype = np.float32),self.forward)
+        self.up = np.cross(self.right,self.forward)
+
 class App:
     def __init__(self):
         self.renderer = Engine()
+        self.scene = Scene()
         self.mainloop()
     def mainloop(self):
         execute = True
@@ -14,18 +39,45 @@ class App:
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     execute = False
-            self.renderer.render()
+            self.renderer.render(self.scene)
+            mouse_speed = self.check_mouse()
+            keys_speed = self.check_keys()
         self.close()
+    
+    def check_mouse(self):
+        speed = pg.mouse.get_rel()
+        return (speed[0]/10,speed[1]/10)
+        
+    def check_keys(self):
+        keys = pg.key.get_pressed()
+        speed_x = 0
+        speed_y = 0
+        if keys[pg.K_a]:
+            speed_x += 1
+        if keys[pg.K_d]:
+            speed_x -= 1
+        if keys[pg.K_w]:
+            speed_y += 1
+        if keys[pg.K_s]:
+            speed_y -= 1
+        return (speed_x,speed_y,0)
+
     def close(self):
         self.renderer.close()
+        for obj in self.scene.objects:
+            obj[1].destroy()
         pg.quit()
 
 class Engine:
     def __init__(self):
         w,h= 640,480
         pg.init()
+        
+        pg.display.gl_set_attribute(pg.GL_CONTEXT_MAJOR_VERSION, 3)
+        pg.display.gl_set_attribute(pg.GL_CONTEXT_MINOR_VERSION, 3)
+        pg.display.gl_set_attribute(pg.GL_CONTEXT_PROFILE_MASK,
+                                    pg.GL_CONTEXT_PROFILE_CORE)
         pg.display.set_mode((w,h), pg.OPENGL|pg.DOUBLEBUF)
-        self.clock = pg.time.Clock()
         self.shader = self.createshader("shaders/vertex.txt","shaders/fragment.txt")
         glUseProgram(self.shader)
         glUniform1i(glGetUniformLocation(self.shader, "imageTexture"),0)
@@ -34,50 +86,51 @@ class Engine:
         glEnable(GL_BLEND)
         glEnable(GL_DEPTH_TEST)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        self.cube = Cube([0,0,-5],[0,0,0])
-        self.cube_mesh = Mesh("models\Crate1.obj")
         projection_transform = pyrr.matrix44.create_perspective_projection(
             fovy = 45, aspect = 640/480, 
-            near = 0.1, far = 10, dtype=np.float32
+            near = 0.1, far = 50, dtype=np.float32
         )
         glUniformMatrix4fv(
             glGetUniformLocation(self.shader,"projection"),
             1, GL_FALSE, projection_transform
         )
         self.modelMatrixLocation = glGetUniformLocation(self.shader,"model")
-        #self.triangle = Triangle()
+        self.viewMatrixLocation = glGetUniformLocation(self.shader,"view")
         self.material = Material()
 
-    def render(self):
-        # execute = True
-        # while execute:
-        #     for event in pg.event.get():
-        #         if event.type == pg.QUIT:
-        #             execute = False
+    def render(self, scene):
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-        self.cube.eulers[2] +=2
-        if self.cube.eulers[2] > 360:
-            self.cube.eulers[2] = 0
         glUseProgram(self.shader)
-        model_transform = pyrr.matrix44.create_identity(dtype=np.float32)
-        model_transform = pyrr.matrix44.multiply(
-            m1=model_transform, 
-            m2=pyrr.matrix44.create_from_eulers(
-                eulers=np.radians(self.cube.eulers), dtype=np.float32
-            )
+        view_transform = pyrr.matrix44.create_look_at(
+            scene.player.position,
+            scene.player.position+scene.player.forward,
+            scene.player.up,np.float32
         )
-        model_transform = pyrr.matrix44.multiply(
-            m1=model_transform, 
-            m2=pyrr.matrix44.create_from_translation(
-                vec=np.array(self.cube.position),dtype=np.float32
+        glUniformMatrix4fv(self.viewMatrixLocation,1,GL_FALSE,view_transform)
+
+        for obj in scene.objects:
+            obj[0].eulers[0] +=0.2
+            if  obj[0].eulers[0] > 360:
+                obj[0].eulers[0] = 0
+
+            model_transform = pyrr.matrix44.create_identity(dtype=np.float32)
+            model_transform = pyrr.matrix44.multiply(
+                m1=model_transform, 
+                m2=pyrr.matrix44.create_from_eulers(
+                    eulers=np.radians(obj[0].eulers), dtype=np.float32
+                )
             )
-        )
-        glUniformMatrix4fv(self.modelMatrixLocation,1,GL_FALSE,model_transform)
-        self.material.use()
-        glBindVertexArray(self.cube_mesh.vao)
-        glDrawArrays(GL_TRIANGLES,0,self.cube_mesh.vertex_count)
+            model_transform = pyrr.matrix44.multiply(
+                m1=model_transform, 
+                m2=pyrr.matrix44.create_from_translation(
+                    vec=np.array(obj[0].position),dtype=np.float32
+                )
+            )
+            glUniformMatrix4fv(self.modelMatrixLocation,1,GL_FALSE,model_transform)
+            self.material.use()
+            glBindVertexArray(obj[1].vao)
+            glDrawArrays(GL_TRIANGLES,0,obj[1].vertex_count)
         pg.display.flip()
-        self.clock.tick(60)
 
     def createshader(self, vertexPath, fragmentPath):
         with open(vertexPath,'r') as l:
@@ -92,7 +145,6 @@ class Engine:
 
     def close(self):
         self.material.delete()
-        self.cube_mesh.destroy()
         glDeleteProgram(self.shader)
 
 class Triangle:
@@ -287,7 +339,6 @@ class Mesh:
     def destroy(self):
         glDeleteVertexArrays(1,(self.vao,))
         glDeleteBuffers(1,(self.vbo,))
-
 
 class Material:
     def __init__(self):
