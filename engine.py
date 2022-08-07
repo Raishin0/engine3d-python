@@ -1,5 +1,3 @@
-from pydoc import cram
-import string
 import pygame as pg
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram,compileShader
@@ -7,6 +5,22 @@ import numpy as np
 import ctypes, pyrr
 
 class App:
+    def __init__(self):
+        self.renderer = Engine()
+        self.mainloop()
+    def mainloop(self):
+        execute = True
+        while execute:
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    execute = False
+            self.renderer.render()
+        self.close()
+    def close(self):
+        self.renderer.close()
+        pg.quit()
+
+class Engine:
     def __init__(self):
         w,h= 640,480
         pg.init()
@@ -33,41 +47,37 @@ class App:
         self.modelMatrixLocation = glGetUniformLocation(self.shader,"model")
         #self.triangle = Triangle()
         self.material = Material()
-        self.mainloop()
 
-    def mainloop(self):
-        execute = True
-        while execute:
-            for event in pg.event.get():
-                if event.type == pg.QUIT:
-                    execute = False
-            glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
-            self.cube.eulers[2] +=2
-            if self.cube.eulers[2] > 360:
-                self.cube.eulers[2] = 0
-            glUseProgram(self.shader)
-
-            model_transform = pyrr.matrix44.create_identity(dtype=np.float32)
-            model_transform = pyrr.matrix44.multiply(
-                m1=model_transform, 
-                m2=pyrr.matrix44.create_from_eulers(
-                    eulers=np.radians(self.cube.eulers), dtype=np.float32
-                )
+    def render(self):
+        # execute = True
+        # while execute:
+        #     for event in pg.event.get():
+        #         if event.type == pg.QUIT:
+        #             execute = False
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
+        self.cube.eulers[2] +=2
+        if self.cube.eulers[2] > 360:
+            self.cube.eulers[2] = 0
+        glUseProgram(self.shader)
+        model_transform = pyrr.matrix44.create_identity(dtype=np.float32)
+        model_transform = pyrr.matrix44.multiply(
+            m1=model_transform, 
+            m2=pyrr.matrix44.create_from_eulers(
+                eulers=np.radians(self.cube.eulers), dtype=np.float32
             )
-            model_transform = pyrr.matrix44.multiply(
-                m1=model_transform, 
-                m2=pyrr.matrix44.create_from_translation(
-                    vec=np.array(self.cube.position),dtype=np.float32
-                )
+        )
+        model_transform = pyrr.matrix44.multiply(
+            m1=model_transform, 
+            m2=pyrr.matrix44.create_from_translation(
+                vec=np.array(self.cube.position),dtype=np.float32
             )
-            glUniformMatrix4fv(self.modelMatrixLocation,1,GL_FALSE,model_transform)
-            self.material.use()
-            glBindVertexArray(self.cube_mesh.vao)
-            glDrawArrays(GL_TRIANGLES,0,self.cube_mesh.vertex_count)
-
-            pg.display.flip()
-            self.clock.tick(60)
-        self.close()
+        )
+        glUniformMatrix4fv(self.modelMatrixLocation,1,GL_FALSE,model_transform)
+        self.material.use()
+        glBindVertexArray(self.cube_mesh.vao)
+        glDrawArrays(GL_TRIANGLES,0,self.cube_mesh.vertex_count)
+        pg.display.flip()
+        self.clock.tick(60)
 
     def createshader(self, vertexPath, fragmentPath):
         with open(vertexPath,'r') as l:
@@ -84,7 +94,6 @@ class App:
         self.material.delete()
         self.cube_mesh.destroy()
         glDeleteProgram(self.shader)
-        pg.quit()
 
 class Triangle:
     def __init__(self):
